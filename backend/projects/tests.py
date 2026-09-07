@@ -98,6 +98,19 @@ class TestTasks:
         response = client.delete(f'/api/tasks/{task.id}')
         assert response.status_code == 403
 
+    def test_search_treats_malicious_text_as_literal(self, auth_client, user):
+        project = Project.objects.create(name='P', owner=user)
+        Membership.objects.create(user=user, project=project, role='admin')
+        literal = "needle OR 1=1 --"
+        Task.objects.create(project=project, title='alpha', description='safe text', created_by=user)
+        Task.objects.create(project=project, title=literal, description='literal match', created_by=user)
+
+        response = auth_client.get(f'/api/projects/{project.id}/tasks', {'q': literal}, format='json')
+
+        assert response.status_code == 200
+        titles = [task['title'] for task in response.data['tasks']]
+        assert titles == [literal]
+
     def test_non_member_cannot_patch_task_and_task_is_unchanged(self, client, user):
         owner = User.objects.create_user(email='owner@example.com', name='Owner', password='password123')
         project = Project.objects.create(name='P', owner=owner)
