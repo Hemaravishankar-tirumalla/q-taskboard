@@ -40,6 +40,19 @@ export default function ProjectPage() {
     onError: (err) => setError(err instanceof Error ? err.message : "create failed"),
   });
 
+  const exportTasks = useMutation({
+    mutationFn: () =>
+      apiFetch<{ ok: boolean; exported: number; projectId: string }>(`/api/projects/${id}/export`, {
+        method: "POST",
+      }),
+    onSuccess: (result) => {
+      setError(null);
+      const count = result?.exported ?? 0;
+      window.alert(`Export queued successfully. ${count} task(s) sent.`);
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : "export failed"),
+  });
+
   const project = data?.project;
   const tasksByStatus: Record<TaskStatus, ApiTask[]> = {
     todo: [],
@@ -86,6 +99,15 @@ export default function ProjectPage() {
                   owner: {project.owner.name} · {project.memberships.length} members
                 </p>
               </div>
+
+              <button
+                type="button"
+                onClick={() => exportTasks.mutate()}
+                disabled={exportTasks.isPending}
+                className="rounded-md border border-border bg-surface px-4 py-2 text-sm font-medium text-white hover:border-accent disabled:opacity-50"
+              >
+                {exportTasks.isPending ? "exporting…" : "export to Airtable"}
+              </button>
             </div>
 
             <section className="bg-surface border border-border rounded-lg p-4 mb-6">

@@ -1,3 +1,8 @@
+import json
+import os
+from urllib import request as urllib_request
+from urllib.error import HTTPError, URLError
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -248,5 +253,43 @@ class ExportView(APIView):
         if not _can_edit_tasks(membership.role):
             return Response({'error': 'only admins and members can export'}, status=status.HTTP_403_FORBIDDEN)
 
-        tasks = Task.objects.filter(project_id=project_id).select_related('assignee', 'created_by')
-        return Response({'exported': 0, 'tasks': TaskSerializer(tasks, many=True).data})
+        tasks = (
+            Task.objects
+            .filter(project_id=project_id)
+            .select_related('assignee', 'created_by')
+            .order_by('status', 'position')
+        )
+        payload = {
+            'projectId': str(project_id),
+            'tasks': TaskSerializer(tasks, many=True).data,
+        }
+
+        export_url = os.environ.get('EXPORTER_SERVICE_URL')
+        if not export_url:
+            return Response({'error': 'export service not configured'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        token = os.environ.get('EXPORTER_INTERNAL_TOKEN')
+        body = json.dumps(payload).encode('utf-8')
+        req = urllib_request.Request(
+            export_url,
+            data=body,
+            headers={
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'Authorization': f'Bearer {token}',
+            },
+            method='POST',
+        )
+
+        try:
+            with urllib_request.urlopen(req, timeout=20) as response:
+                data = json.loads(response.read().decode('utf-8'))
+                return Response(data, status=response.status)
+        except HTTPError as exc:
+            try:
+                error_data = json.loads(exc.read().decode('utf-8'))
+            except Exception:
+                error_data = {'error': str(exc)}
+            return Response(error_data, status=exc.code)
+        except URLError as exc:
+            return Response({'error': f'export service unavailable: {exc.reason}'}, status=status.HTTP_502_BAD_GATEWAY)
