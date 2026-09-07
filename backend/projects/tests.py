@@ -97,3 +97,82 @@ class TestTasks:
 
         response = client.delete(f'/api/tasks/{task.id}')
         assert response.status_code == 403
+
+    def test_non_member_cannot_patch_task_and_task_is_unchanged(self, client, user):
+        owner = User.objects.create_user(email='owner@example.com', name='Owner', password='password123')
+        project = Project.objects.create(name='P', owner=owner)
+        Membership.objects.create(user=owner, project=project, role='admin')
+        task = Task.objects.create(project=project, title='Original task', created_by=owner)
+
+        resp = client.post('/api/auth/login', {'email': 'meera@taskboard.dev', 'password': 'password123'}, format='json')
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {resp.data['token']}")
+
+        response = client.patch(f'/api/tasks/{task.id}', {'title': 'Hacked task'}, format='json')
+        task.refresh_from_db()
+
+        assert response.status_code == 403
+        assert task.title == 'Original task'
+
+    def test_viewer_cannot_patch_task(self, client, user):
+        owner = User.objects.create_user(email='owner@example.com', name='Owner', password='password123')
+        project = Project.objects.create(name='P', owner=owner)
+        Membership.objects.create(user=owner, project=project, role='admin')
+        Membership.objects.create(user=user, project=project, role='viewer')
+        task = Task.objects.create(project=project, title='Original task', created_by=owner)
+
+        resp = client.post('/api/auth/login', {'email': 'meera@taskboard.dev', 'password': 'password123'}, format='json')
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {resp.data['token']}")
+
+        response = client.patch(f'/api/tasks/{task.id}', {'title': 'Viewer change'}, format='json')
+        task.refresh_from_db()
+
+        assert response.status_code == 403
+        assert task.title == 'Original task'
+
+    def test_admin_can_patch_task(self, client, user):
+        project = Project.objects.create(name='P', owner=user)
+        Membership.objects.create(user=user, project=project, role='admin')
+        task = Task.objects.create(project=project, title='Original task', created_by=user)
+
+        resp = client.post('/api/auth/login', {'email': 'meera@taskboard.dev', 'password': 'password123'}, format='json')
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {resp.data['token']}")
+
+        response = client.patch(f'/api/tasks/{task.id}', {'title': 'Admin change', 'status': 'review'}, format='json')
+        task.refresh_from_db()
+
+        assert response.status_code == 200
+        assert task.title == 'Admin change'
+        assert task.status == 'review'
+
+    def test_member_can_patch_task(self, client, user):
+        owner = User.objects.create_user(email='owner@example.com', name='Owner', password='password123')
+        project = Project.objects.create(name='P', owner=owner)
+        Membership.objects.create(user=owner, project=project, role='admin')
+        Membership.objects.create(user=user, project=project, role='member')
+        task = Task.objects.create(project=project, title='Original task', created_by=owner)
+
+        resp = client.post('/api/auth/login', {'email': 'meera@taskboard.dev', 'password': 'password123'}, format='json')
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {resp.data['token']}")
+
+        response = client.patch(f'/api/tasks/{task.id}', {'title': 'Member change'}, format='json')
+        task.refresh_from_db()
+
+        assert response.status_code == 200
+        assert task.title == 'Member change'
+
+    def test_task_cannot_be_assigned_to_user_outside_project(self, client, user):
+        owner = User.objects.create_user(email='owner@example.com', name='Owner', password='password123')
+        outsider = User.objects.create_user(email='outsider@example.com', name='Outsider', password='password123')
+        project = Project.objects.create(name='P', owner=owner)
+        Membership.objects.create(user=owner, project=project, role='admin')
+        Membership.objects.create(user=user, project=project, role='member')
+        task = Task.objects.create(project=project, title='Original task', created_by=owner)
+
+        resp = client.post('/api/auth/login', {'email': 'meera@taskboard.dev', 'password': 'password123'}, format='json')
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {resp.data['token']}")
+
+        response = client.patch(f'/api/tasks/{task.id}', {'assigneeId': str(outsider.id)}, format='json')
+        task.refresh_from_db()
+
+        assert response.status_code == 400
+        assert task.assignee_id is None

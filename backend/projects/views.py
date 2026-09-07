@@ -164,12 +164,21 @@ class TaskListCreateView(APIView):
 class TaskDetailView(APIView):
     def patch(self, request, task_id):
         try:
-            task = Task.objects.get(id=task_id)
+            task = Task.objects.select_related('project').get(id=task_id)
         except Task.DoesNotExist:
             return Response({'error': 'not found'}, status=status.HTTP_404_NOT_FOUND)
 
+        membership = _get_membership(request.user, str(task.project_id))
+        if not membership:
+            return Response({'error': 'forbidden'}, status=status.HTTP_403_FORBIDDEN)
+        if not _can_edit_tasks(membership.role):
+            return Response({'error': 'viewers cannot edit tasks'}, status=status.HTTP_403_FORBIDDEN)
+
         if 'title' in request.data:
-            task.title = request.data['title'].strip()
+            title = (request.data['title'] or '').strip()
+            if not title:
+                return Response({'error': 'title is required'}, status=status.HTTP_400_BAD_REQUEST)
+            task.title = title
         if 'description' in request.data:
             task.description = request.data['description'] or None
         if 'status' in request.data:
@@ -178,7 +187,11 @@ class TaskDetailView(APIView):
                 return Response({'error': 'invalid status'}, status=status.HTTP_400_BAD_REQUEST)
             task.status = new_status
         if 'assigneeId' in request.data:
-            task.assignee_id = request.data['assigneeId'] or None
+            assignee_id = request.data['assigneeId'] or None
+            if assignee_id is not None:
+                if not Membership.objects.filter(user_id=assignee_id, project_id=task.project_id).exists():
+                    return Response({'error': 'assignee must be a member of this project'}, status=status.HTTP_400_BAD_REQUEST)
+            task.assignee_id = assignee_id
         task.save()
 
         task_data = TaskSerializer(Task.objects.select_related('assignee').get(id=task_id)).data
