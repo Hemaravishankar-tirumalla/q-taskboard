@@ -8,8 +8,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.db.models import Q
 from users.serializers import UserSerializer
-from .models import Project, Membership, Task
-from .serializers import ProjectDetailSerializer, TaskSerializer
+from .models import Project, Membership, Task, TaskComment
+from .serializers import ProjectDetailSerializer, TaskCommentSerializer, TaskSerializer
 
 
 def _get_membership(user, project_id):
@@ -212,6 +212,48 @@ class TaskDetailView(APIView):
 
         task.delete()
         return Response({'ok': True})
+
+
+class TaskCommentListCreateView(APIView):
+    def _get_task_and_membership(self, request, task_id):
+        try:
+            task = Task.objects.only('id', 'project_id').get(id=task_id)
+        except Task.DoesNotExist:
+            return None, None
+        return task, _get_membership(request.user, task.project_id)
+
+    def get(self, request, task_id):
+        task, membership = self._get_task_and_membership(request, task_id)
+        if not task:
+            return Response({'error': 'not found'}, status=status.HTTP_404_NOT_FOUND)
+        if not membership:
+            return Response({'error': 'forbidden'}, status=status.HTTP_403_FORBIDDEN)
+
+        comments = (
+            TaskComment.objects
+            .filter(task=task)
+            .select_related('author')
+            .order_by('created_at', 'id')
+        )
+        return Response({'comments': TaskCommentSerializer(comments, many=True).data})
+
+    def post(self, request, task_id):
+        task, membership = self._get_task_and_membership(request, task_id)
+        if not task:
+            return Response({'error': 'not found'}, status=status.HTTP_404_NOT_FOUND)
+        if not membership:
+            return Response({'error': 'forbidden'}, status=status.HTTP_403_FORBIDDEN)
+        if not _can_edit_tasks(membership.role):
+            return Response({'error': 'viewers cannot post comments'}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = TaskCommentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        comment = serializer.save(task=task, author=request.user)
+        comment = TaskComment.objects.select_related('author').get(id=comment.id)
+        return Response(
+            {'comment': TaskCommentSerializer(comment).data},
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class MemberAddView(APIView):

@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api-client";
 import type { ApiTask, ApiProjectMember, TaskStatus } from "@/types";
 import { STATUS_LABELS, STATUS_ORDER } from "@/types";
+import { TaskComments } from "@/components/TaskComments";
 
 type Props = {
   task: ApiTask;
@@ -120,6 +121,8 @@ export function TaskDetail({ task, projectId, members, onClose }: Props) {
             </select>
           </label>
         </div>
+
+        <TaskComments taskId={task.id} members={members} />
 
         {error && (
           <p className="text-sm text-red-400 mb-3" role="alert">

@@ -59,4 +59,20 @@ class Task(models.Model):
 
     class Meta:
         db_table = 'tasks'
-        indexes = [models.Index(fields=['project', 'status'])]
+        indexes = [models.Index(fields=['project', 'status'], name='tasks_project_status_idx')]
+
+
+class TaskComment(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name='comments')
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name='task_comments',
+    )
+    body = models.TextField(max_length=5000)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'task_comments'
+        indexes = [models.Index(fields=['task', 'created_at'], name='task_commen_task_id_413a08_idx')]

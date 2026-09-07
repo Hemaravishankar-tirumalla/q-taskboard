@@ -113,6 +113,22 @@ curl -H "Authorization: Bearer <token>" http://localhost:8000/api/projects
 ### Export
 - `POST /api/projects/:id/export` — Export tasks to Airtable (admin or member)
 
+### Task comments
+- `GET /api/tasks/:id/comments` — Read task comments (all project members)
+- `POST /api/tasks/:id/comments` — Add a comment (admin or member only)
+- Comments are returned oldest first and are append-only; there are no comment update or delete endpoints.
+
+#### Manual comments access checklist
+
+Use one task in a project with four authenticated users: an admin, a member, a viewer, and a non-member.
+
+1. As the admin, open the task, confirm existing comments show oldest first, post a comment, and confirm the new author, body, and timestamp appear.
+2. As the member, read the same thread and post another comment. Confirm both comments remain in chronological order.
+3. As the viewer, confirm the thread is readable but the comment form and post button are not shown. Verify a direct `POST /api/tasks/<task_id>/comments` returns `403`.
+4. As the non-member, verify both `GET` and `POST /api/tasks/<task_id>/comments` return `403` and no comment is created.
+5. Send `PATCH` and `DELETE` requests to `/api/tasks/<task_id>/comments`; both must return `405`, confirming comments are append-only.
+6. Submit an empty or whitespace-only body as an admin/member; the API must return `400` and the thread must remain unchanged.
+
 ## Airtable Export (Part 3c)
 
 Set these in your `.env` before running the export:

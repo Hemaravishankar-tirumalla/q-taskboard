@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from users.serializers import UserSerializer
-from .models import Project, Membership, Task
+from .models import Project, Membership, Task, TaskComment
 
 
 class TaskSerializer(serializers.ModelSerializer):
@@ -24,6 +24,22 @@ class TaskSerializer(serializers.ModelSerializer):
             'id', 'project_id', 'title', 'description', 'status',
             'assignee_id', 'created_by_id', 'position', 'created_at', 'updated_at', 'assignee',
         ]
+
+
+class TaskCommentSerializer(serializers.ModelSerializer):
+    author = UserSerializer(read_only=True)
+    createdAt = serializers.DateTimeField(source='created_at', read_only=True)
+
+    class Meta:
+        model = TaskComment
+        fields = ['id', 'body', 'author', 'createdAt']
+        read_only_fields = ['id', 'author', 'createdAt']
+
+    def validate_body(self, value):
+        body = value.strip()
+        if not body:
+            raise serializers.ValidationError('comment body is required')
+        return body
 
 
 class MembershipSerializer(serializers.ModelSerializer):
